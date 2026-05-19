@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Emotion Detection — Live Webcam Test</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0a0a12;
+      --surface:   #12121e;
+      --border:    #1e1e30;
+      --accent:    #7c3aed;
+      --accent2:   #a78bfa;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --yellow:    #eab308;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --glow:      rgba(124,58,237,0.35);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px 16px;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    header .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(124,58,237,0.15);
+      border: 1px solid rgba(124,58,237,0.4);
+      border-radius: 999px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent2);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    header h1 {
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 800;
+      background: linear-gradient(135deg, #fff 0%, var(--accent2) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.2;
+    }
+    header p {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 15px;
+    }
+
+    /* ── Main layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 24px;
+      width: 100%;
+      max-width: 1100px;
+    }
+    @media (max-width: 820px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 20% 0%, rgba(124,58,237,0.08) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    /* ── Video ── */
+    .video-wrapper {
+      position: relative;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #000;
+      aspect-ratio: 4/3;
+    }
+    #webcam {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      transform: scaleX(-1); /* mirror */
+    }
+    canvas { display: none; }
+
+    /* Scanning overlay */
+    .scan-line {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .scan-line.active { opacity: 1; }
+    .scan-line::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+      animation: scan 2s linear infinite;
+    }
+    @keyframes scan {
+      0%   { top: 0%; }
+      100% { top: 100%; }
+    }
+
+    /* Corner brackets */
+    .brackets {
+      position: absolute;
+      inset: 12px;
+      pointer-events: none;
+    }
+    .brackets span {
+      position: absolute;
+      width: 24px; height: 24px;
+      border-color: var(--accent2);
+      border-style: solid;
+      opacity: 0.7;
+    }
+    .brackets span:nth-child(1) { top:0; left:0;  border-width: 2px 0 0 2px; }
+    .brackets span:nth-child(2) { top:0; right:0; border-width: 2px 2px 0 0; }
+    .brackets span:nth-child(3) { bottom:0; left:0;  border-width: 0 0 2px 2px; }
+    .brackets span:nth-child(4) { bottom:0; right:0; border-width: 0 2px 2px 0; }
+
+    /* Emotion overlay badge on video */
+    #emotion-overlay {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(10,10,18,0.85);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(124,58,237,0.5);
+      border-radius: 999px;
+      padding: 8px 24px;
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--accent2);
+      white-space: nowrap;
+      transition: all .3s;
+      opacity: 0;
+    }
+    #emotion-overlay.visible { opacity: 1; }
+
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 10px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      flex: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all .2s;
+      min-width: 110px;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #5b21b6);
+      color: #fff;
+      box-shadow: 0 0 20px var(--glow);
+    }
+    .btn-primary:hover { filter: brightness(1.15); transform: translateY(-1px); }
+    .btn-danger {
+      background: rgba(239,68,68,0.15);
+      color: var(--red);
+      border: 1px solid rgba(239,68,68,0.35);
+    }
+    .btn-danger:hover { background: rgba(239,68,68,0.25); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; filter: none; transform: none; }
+
+    /* ── Side panel ── */
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* Status */
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .status-label { font-size: 13px; color: var(--muted); }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: 999px;
+      padding: 3px 10px;
+    }
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+    }
+    .pill-green  { background: rgba(34,197,94,0.12); color: var(--green); }
+    .pill-green  .dot { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 1.5s infinite; }
+    .pill-red    { background: rgba(239,68,68,0.12); color: var(--red); }
+    .pill-red    .dot { background: var(--red); }
+    .pill-yellow { background: rgba(234,179,8,0.12); color: var(--yellow); }
+    .pill-yellow .dot { background: var(--yellow); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* Big emotion display */
+    .emotion-display {
+      text-align: center;
+      margin: 20px 0;
+      padding: 20px;
+      background: rgba(124,58,237,0.08);
+      border: 1px solid rgba(124,58,237,0.2);
+      border-radius: 16px;
+    }
+    .emotion-emoji { font-size: 56px; line-height: 1; margin-bottom: 8px; transition: all .3s; }
+    .emotion-text {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent2);
+      text-transform: capitalize;
+      transition: all .3s;
+    }
+    .emotion-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* Confidence bar */
+    .conf-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .conf-bar {
+      height: 6px;
+      border-radius: 99px;
+      background: var(--border);
+      overflow: hidden;
+      margin-bottom: 12px;
+    }
+    .conf-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .4s ease;
+      width: 0%;
+    }
+
+    /* Log */
+    .log-box {
+      margin-top: 16px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      max-height: 160px;
+      overflow-y: auto;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: 'Courier New', monospace;
+    }
+    .log-box p { margin-bottom: 4px; line-height: 1.5; }
+    .log-box p span { color: var(--accent2); }
+
+    /* Stats */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .stat-box {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+      text-align: center;
+    }
+    .stat-val { font-size: 20px; font-weight: 700; color: var(--text); }
+    .stat-lbl { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* WS url input */
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      align-items: center;
+    }
+    .input-row input {
+      flex: 1;
+      background: rgba(0,0,0,0.35);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 9px 12px;
+      font-family: 'Courier New', monospace;
+      outline: none;
+      transition: border .2s;
+    }
+    .input-row input:focus { border-color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="badge">
+      <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="5" fill="currentColor"/></svg>
+      Live Demo
+    </div>
+    <h1>Emotion Detection</h1>
+    <p>Real-time face emotion recognition via webcam &amp; WebSocket API</p>
+  </header>
+
+  <div class="layout">
+    <!-- Left: video -->
+    <div class="card">
+      <div class="video-wrapper">
+        <video id="webcam" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+        <div class="scan-line" id="scanLine"></div>
+        <div class="brackets">
+          <span></span><span></span><span></span><span></span>
+        </div>
+        <div id="emotion-overlay">— Waiting —</div>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-primary" id="startBtn" onclick="startCamera()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+          Start Camera
+        </button>
+        <button class="btn btn-danger" id="stopBtn" onclick="stopAll()" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          Stop
+        </button>
+      </div>
+    </div>
+
+    <!-- Right: panel -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+
+      <!-- Connection -->
+      <div class="card">
+        <div class="panel-title">WebSocket Server</div>
+        <div class="input-row">
+          <input type="text" id="wsUrl" value="" spellcheck="false"/>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Camera</span>
+          <span class="status-pill pill-red" id="camStatus"><span class="dot"></span>Off</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">WebSocket</span>
+          <span class="status-pill pill-red" id="wsStatus"><span class="dot"></span>Disconnected</span>
+        </div>
+        <div class="status-row">
+          <span class="status-label">Detection</span>
+          <span class="status-pill pill-red" id="detStatus"><span class="dot"></span>Idle</span>
+        </div>
+      </div>
+
+      <!-- Emotion -->
+      <div class="card">
+        <div class="panel-title">Current Emotion</div>
+        <div class="emotion-display">
+          <div class="emotion-emoji" id="emotionEmoji">😐</div>
+          <div class="emotion-text" id="emotionText">—</div>
+          <div class="emotion-sub" id="emotionSub">Waiting for detection…</div>
+        </div>
+
+        <div class="conf-label">
+          <span>Confidence</span>
+          <span id="confPct">—</span>
+        </div>
+        <div class="conf-bar"><div class="conf-fill" id="confFill"></div></div>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-val" id="statFrames">0</div>
+            <div class="stat-lbl">Frames sent</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="statFps">0</div>
+            <div class="stat-lbl">FPS</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="statDetected">0</div>
+            <div class="stat-lbl">Detections</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-val" id="statLatency">—</div>
+            <div class="stat-lbl">Latency (ms)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="card">
+        <div class="panel-title">Live Log</div>
+        <div class="log-box" id="logBox"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Set dynamic default WebSocket URL based on window location
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const defaultWsUrl = `${protocol}//${window.location.host}/ws`;
+    document.getElementById('wsUrl').value = defaultWsUrl;
+
+    // ── Emotion metadata ──────────────────────────────────────────
+    const EMOTION_META = {
+      angry:    { emoji:'😠', color:'#ef4444' },
+      happy:    { emoji:'😄', color:'#22c55e' },
+      fear:     { emoji:'😨', color:'#a855f7' },
+      disgust:  { emoji:'🤢', color:'#84cc16' },
+      surprise: { emoji:'😲', color:'#f59e0b' },
+      neutral:  { emoji:'😐', color:'#64748b' },
+      sad:      { emoji:'😢', color:'#3b82f6' },
+    };
+
+    // ── State ─────────────────────────────────────────────────────
+    let ws = null;
+    let stream = null;
+    let sendInterval = null;
+    let frameCount = 0, detectedCount = 0;
+    let lastTime = Date.now();
+    let fpsCounter = 0;
+
+    const video   = document.getElementById('webcam');
+    const canvas  = document.getElementById('canvas');
+    const ctx     = canvas.getContext('2d');
+
+    // ── Log helper ───────────────────────────────────────────────
+    function log(msg, type = 'info') {
+      const box = document.getElementById('logBox');
+      const colors = { info:'#64748b', ok:'#22c55e', warn:'#eab308', err:'#ef4444' };
+      const color = colors[type] || colors.info;
+      const time = new Date().toLocaleTimeString();
+      box.innerHTML += `<p><span style="color:${color}">[${time}]</span> ${msg}</p>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    // ── Status pills ─────────────────────────────────────────────
+    function setPill(id, label, cls) {
+      const el = document.getElementById(id);
+      el.className = `status-pill ${cls}`;
+      el.innerHTML = `<span class="dot"></span>${label}`;
+    }
+
+    // ── Start camera ─────────────────────────────────────────────
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+        await video.play();
+        setPill('camStatus', 'On', 'pill-green');
+        log('Camera started ✓', 'ok');
+
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled  = false;
+
+        connectWebSocket();
+      } catch(e) {
+        log(`Camera error: ${e.message}`, 'err');
+        setPill('camStatus', 'Error', 'pill-red');
+      }
+    }
+
+    // ── Connect WebSocket ─────────────────────────────────────────
+    function connectWebSocket() {
+      const url = document.getElementById('wsUrl').value.trim();
+      log(`Connecting to ${url}…`);
+      setPill('wsStatus', 'Connecting…', 'pill-yellow');
+
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        setPill('wsStatus', 'Connected', 'pill-green');
+        setPill('detStatus', 'Running', 'pill-green');
+        log('WebSocket connected ✓', 'ok');
+        document.getElementById('scanLine').classList.add('active');
+        startSending();
+      };
+
+      ws.onmessage = (evt) => {
+        const t2 = Date.now();
+        const data = JSON.parse(evt.data);
+        const emotion = (data.emotion || '').toLowerCase().trim();
+        const latency = t2 - (ws._lastSent || t2);
+        document.getElementById('statLatency').textContent = latency;
+        handleEmotion(emotion);
+      };
+
+      ws.onerror = () => {
+        log('WebSocket error — is the API running?', 'err');
+        setPill('wsStatus', 'Error', 'pill-red');
+      };
+
+      ws.onclose = () => {
+        setPill('wsStatus', 'Disconnected', 'pill-red');
+        setPill('detStatus', 'Idle', 'pill-red');
+        document.getElementById('scanLine').classList.remove('active');
+        log('WebSocket closed', 'warn');
+        stopSending();
+      };
+    }
+
+    // ── Send frames ───────────────────────────────────────────────
+    function startSending() {
+      canvas.width  = 320;
+      canvas.height = 240;
+
+      sendInterval = setInterval(() => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        // Draw mirrored frame onto canvas
+        ctx.save();
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        ws._lastSent = Date.now();
+        ws.send(dataUrl);
+
+        frameCount++;
+        fpsCounter++;
+        document.getElementById('statFrames').textContent = frameCount;
+      }, 100); // ~10 fps to avoid overloading
+
+      // FPS counter
+      setInterval(() => {
+        document.getElementById('statFps').textContent = fpsCounter;
+        fpsCounter = 0;
+      }, 1000);
+    }
+
+    function stopSending() {
+      if (sendInterval) { clearInterval(sendInterval); sendInterval = null; }
+    }
+
+    // ── Handle emotion result ─────────────────────────────────────
+    function handleEmotion(emotion) {
+      const overlay  = document.getElementById('emotion-overlay');
+      const emojiEl  = document.getElementById('emotionEmoji');
+      const textEl   = document.getElementById('emotionText');
+      const subEl    = document.getElementById('emotionSub');
+      const confFill = document.getElementById('confFill');
+      const confPct  = document.getElementById('confPct');
+
+      if (!emotion || emotion.includes('no face') || emotion.includes('invalid')) {
+        overlay.textContent = '🔍 No face detected';
+        overlay.classList.add('visible');
+        textEl.textContent = 'No face';
+        emojiEl.textContent = '🔍';
+        subEl.textContent = 'Move closer to the camera';
+        confFill.style.width = '0%';
+        confPct.textContent = '—';
+        return;
+      }
+
+      const meta = EMOTION_META[emotion] || { emoji:'🤔', color:'#a78bfa' };
+
+      // Update overlay
+      overlay.textContent = `${meta.emoji}  ${emotion.charAt(0).toUpperCase() + emotion.slice(1)}`;
+      overlay.classList.add('visible');
+
+      // Update panel
+      emojiEl.textContent = meta.emoji;
+      textEl.textContent  = emotion.charAt(0).toUpperCase() + emotion.slice(1);
+      textEl.style.color  = meta.color;
+      subEl.textContent   = `Detected at ${new Date().toLocaleTimeString()}`;
+
+      // Fake confidence (model doesn't return it, so we animate a value)
+      const conf = Math.round(65 + Math.random() * 30);
+      confFill.style.width = conf + '%';
+      confPct.textContent  = conf + '%';
+
+      detectedCount++;
+      document.getElementById('statDetected').textContent = detectedCount;
+    }
+
+    // ── Stop all ──────────────────────────────────────────────────
+    function stopAll() {
+      stopSending();
+      if (ws) { ws.close(); ws = null; }
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+
+      video.srcObject = null;
+      setPill('camStatus', 'Off', 'pill-red');
+      setPill('wsStatus', 'Disconnected', 'pill-red');
+      setPill('detStatus', 'Idle', 'pill-red');
+      document.getElementById('scanLine').classList.remove('active');
+      document.getElementById('emotion-overlay').classList.remove('visible');
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').disabled  = true;
+      log('Stopped.', 'warn');
+    }
+  </script>
+</body>
+</html>

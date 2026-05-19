@@ -1,14 +1,20 @@
 from fastapi import FastAPI, WebSocket
+from fastapi.responses import HTMLResponse
 import cv2
 import numpy as np
+import os
 from app.inference import predict_emotion
 
 app = FastAPI(title="Emotion Detection API")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def read_root():
-    return {"message": "Emotion Detection API Running"}
+    html_path = os.path.join(os.path.dirname(__file__), "webcam_test.html")
+    if os.path.exists(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            return HTMLResponse(content=f.read())
+    return HTMLResponse(content="<h1>Emotion Detection API Running</h1><p>webcam_test.html not found.</p>")
 
 
 @app.websocket("/ws")
