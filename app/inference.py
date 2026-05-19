@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import onnxruntime as ort
 
-EMOTIONS = ["angry", "happy", "fear", "disgust", "surprise", "neutral", "sad"]
+EMOTIONS = ["angry", "disgust", "fear", "happy", "neutral", "sad", "surprise"]
 
 session = ort.InferenceSession("model/emotion_model.onnx")
 
